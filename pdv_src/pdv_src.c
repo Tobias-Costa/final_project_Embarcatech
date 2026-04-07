@@ -32,14 +32,24 @@ int current_count = 0; // Quantos itens existem no inventário atual
 int highlight = 0; // Índice do item selecionado no menu (0 a total)
 int shift = 0; // Índice do item que está no topo da tela (scroll)
 int joystick_posy; // Posição do eixo Y do joystick em valores decimais(0 a 4095)
+float total_bill = 0; // Variável que armazena valor total a se pagar pelos produtos
 bool atualizar_display_flag = true;
+
+int get_total_menu_rows(){
+    if (total_bill>0){
+        return current_count + 1; // Calcula o índice que será usado para escrever os itens e o selecionável "Prosseguir" no display
+    } else{
+        return current_count; // Calcula o índice que mostrará apenas os itens.
+    }
+}
 
 void render_frame_zero(ssd1306_t *display){
     // Desenha cabeçalho
     ssd1306_draw_string(display, 5, 5, 1, "Selecione os itens:");
     ssd1306_draw_line(display,5,15,120,15);
 
-    int total_menu_rows = current_count + 1; // Calcula o índice que será usado para escrever "Prosseguir" no display
+    // Caso o usuário tenha selecionado pelo menos um produto, aparecerá o selecionável 'Prosseguir'. Caso contrário, não é desenhado.
+    int total_menu_rows = get_total_menu_rows();
 
     for (int i = 0; i < VISIBLE_LINES; i++) {
         // item_index mapeia a linha física da tela para a posição real na matriz
@@ -60,7 +70,7 @@ void render_frame_zero(ssd1306_t *display){
             snprintf(qty_buffer, sizeof(qty_buffer), "%dx", inventory[item_index].quantity); // snprintf: (onde salvar, tamanho, formato, variável)
             ssd1306_draw_string(display, 105, y_pos, 1, qty_buffer);
         } else{
-            // Caso contrário, é o índice final: desenha o item fixo "Prosseguir"
+            // Caso os itens da matriz 'inventory' tenham acabado e o usuário seleciona um produto: desenha o item fixo "Prosseguir"
             ssd1306_draw_string(display, 0, y_pos, 1, ">>PROSSEGUIR<<");
         }
         // Se este item for o 'highlight', desenhamos um destaque visual (retângulo vazio)
@@ -72,25 +82,24 @@ void render_frame_zero(ssd1306_t *display){
 
 void render_frame_one(ssd1306_t *display){
     // Desenha Cabeçalho
-        ssd1306_draw_string(display, 45, 5, 1, "Resumo:");
-        ssd1306_draw_line(display,5,15,120,15);
-        // Calcula valor total dos itens escolhidos
-        float total_bill;
-        for(int i=0; i < current_count; i++){
-            total_bill += inventory[i].price * inventory[i].quantity;
-        }
-        // Imprime no display o valor total dos itens escolhidos
-        char bill_buffer[20];
-        snprintf(bill_buffer, sizeof(bill_buffer), "Total: R$%.2f", total_bill); // snprintf: (onde salvar, tamanho, formato, variável)
-        ssd1306_draw_string(display, 5, 25, 1, bill_buffer);
-        
-        // Área de seleção de forma de pagamento(pix ou dinheiro)
-        ssd1306_draw_string(display, 5, 40, 1, "Forma de pagamento:");
-        ssd1306_draw_empty_square(display, 0, 50, 64, 12);
-        ssd1306_draw_empty_square(display, 64, 50, 62, 12);
-        ssd1306_draw_string(display, 10, 53, 1, "Dinheiro");
-        ssd1306_draw_string(display, 85, 53, 1, "Pix");
+    ssd1306_draw_string(display, 45, 5, 1, "Resumo:");
+    ssd1306_draw_line(display,5,15,120,15);
+    // Imprime no display o valor total dos itens escolhidos
+    char bill_buffer[20];
+    snprintf(bill_buffer, sizeof(bill_buffer), "Total: R$%.2f", total_bill); // snprintf: (onde salvar, tamanho, formato, variável)
+    ssd1306_draw_string(display, 5, 25, 1, bill_buffer);
+    
+    // Área de seleção de forma de pagamento(pix ou dinheiro)
+    ssd1306_draw_string(display, 5, 40, 1, "Forma de pagamento:");
+    ssd1306_draw_empty_square(display, 0, 50, 64, 12);
+    ssd1306_draw_empty_square(display, 64, 50, 62, 12);
+    ssd1306_draw_string(display, 10, 53, 1, "Dinheiro");
+    ssd1306_draw_string(display, 85, 53, 1, "Pix");
 }
+
+// void render_frame_two(ssd1306_t *display){
+
+// }
 
 void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação no display
     ssd1306_clear(display);
@@ -105,7 +114,8 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
 
 void handle_input(int direction) { // A partir da direção do joystick atualiza as variáveis highlight, shift e atualizar_display_flag
     
-    int total_menu_rows = current_count + 1;
+    // Caso o usuário tenha selecionado pelo menos um produto, aparecerá o selecionável 'Prosseguir'. Caso contrário, não é desenhado.
+    int total_menu_rows = get_total_menu_rows();
 
     // Atualiza o destaque
     highlight += direction;
@@ -253,6 +263,13 @@ int main()
         
         // Se a flag for atualizada para true, o diplay é renderizado novamente
         if (atualizar_display_flag){
+            // Calcula valor total dos itens escolhidos
+            total_bill = 0;
+            for(int i=0; i < current_count; i++){
+                total_bill += inventory[i].price * inventory[i].quantity;
+            }
+
+            // Desativa flag para que não ocorra atualizações de display desnecessária
             atualizar_display_flag = false;
             render_display(&display);
         }
