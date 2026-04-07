@@ -11,7 +11,7 @@
 #define JOYSTICK_VRY_PIN 26
 #define BTN_A 5
 #define BTN_B 6
-#define BUZZER
+// #define BUZZER
 
 // Configurações do Sistema
 #define MAX_ITEMS 20          // Limite da matriz
@@ -35,7 +35,7 @@ int joystick_posy; // Posição do eixo Y do joystick em valores decimais(0 a 40
 float total_bill = 0; // Variável que armazena valor total a se pagar pelos produtos
 bool atualizar_display_flag = true;
 
-int get_total_menu_rows(){
+int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
     if (total_bill>0){
         return current_count + 1; // Calcula o índice que será usado para escrever os itens e o selecionável "Prosseguir" no display
     } else{
@@ -82,24 +82,39 @@ void render_frame_zero(ssd1306_t *display){
 
 void render_frame_one(ssd1306_t *display){
     // Desenha Cabeçalho
-    ssd1306_draw_string(display, 45, 5, 1, "Resumo:");
+    ssd1306_draw_string(display, 40, 5, 1, "Pagamento:");
     ssd1306_draw_line(display,5,15,120,15);
     // Imprime no display o valor total dos itens escolhidos
     char bill_buffer[20];
     snprintf(bill_buffer, sizeof(bill_buffer), "Total: R$%.2f", total_bill); // snprintf: (onde salvar, tamanho, formato, variável)
-    ssd1306_draw_string(display, 5, 25, 1, bill_buffer);
+    ssd1306_draw_string(display, 5, 20, 1, bill_buffer);
     
     // Área de seleção de forma de pagamento(pix ou dinheiro)
-    ssd1306_draw_string(display, 5, 40, 1, "Forma de pagamento:");
+    ssd1306_draw_string(display, 5, 35, 1, "Forma de pagamento:");
     ssd1306_draw_empty_square(display, 0, 50, 64, 12);
     ssd1306_draw_empty_square(display, 64, 50, 62, 12);
     ssd1306_draw_string(display, 10, 53, 1, "Dinheiro");
     ssd1306_draw_string(display, 85, 53, 1, "Pix");
 }
 
-// void render_frame_two(ssd1306_t *display){
+void render_frame_two(ssd1306_t *display){
+    // Desenha Cabeçalho
+    ssd1306_draw_string(display, 20, 5, 1, "Digite o valor:");
+    ssd1306_draw_line(display,5,15,120,15);
+    // Imprime no display o valor total dos itens escolhidos
+    char bill_buffer[20];
+    snprintf(bill_buffer, sizeof(bill_buffer), "Total: R$%.2f", total_bill); // snprintf: (onde salvar, tamanho, formato, variável)
+    ssd1306_draw_string(display, 5, 20, 1, bill_buffer);
+    // Imprime entrada de valor digitado e o troco(entrada - total)
+    ssd1306_draw_string(display, 5, 30, 1, "Entrada: R$0.00");
+    ssd1306_draw_string(display, 5, 40, 1, "Troco: R$0.00" );
 
-// }
+    ssd1306_draw_empty_square(display, 0, 50, 64, 12);
+    ssd1306_draw_empty_square(display, 64, 50, 62, 12);
+    ssd1306_draw_string(display, 10, 53, 1, "Cancelar");
+    ssd1306_draw_string(display, 70, 53, 1, "Concluir");
+
+}
 
 void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação no display
     ssd1306_clear(display);
@@ -107,6 +122,8 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
         render_frame_zero(display);     
     }else if (frame==1){
         render_frame_one(display);
+    }else if (frame==2){
+        render_frame_two(display);
     }
 
     ssd1306_show(display);
@@ -149,6 +166,14 @@ void add_item(const char* name, int qty, float price) { // Trata e adiciona os d
         inventory[current_count].quantity = qty;
         inventory[current_count].price = price;
         current_count++;
+    }
+}
+
+void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca highlight e shift iguais a 0.
+    highlight = 0;
+    shift = 0;
+    for(int i=0; i < current_count; i++){
+        inventory[i].quantity = 0;
     }
 }
 
@@ -210,8 +235,19 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
             frame = 3;  
         }
-    }
+    }else if (frame==2){
+        // INTERRUPÇÕES FRAME 2
 
+        if (gpio==BTN_A){ //CANCELAR resultará no cancelamento da compra e irá limpar os itens escolhidos em 'inventory'.
+            gpio_set_irq_enabled(BTN_A, GPIO_IRQ_EDGE_FALL, false);
+            restart_menu();
+            frame = 0;
+        } else if (gpio==BTN_B){ // CONLUIR resultará na conclusão da comprar e irá limpar os itens escolhidos em 'inventory' para uma nova compra
+            gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
+            restart_menu();
+            frame = 0;  
+        }
+    }
 
     // Atualiza a tela e ativa o alarme de debounce
     atualizar_display_flag = true;
