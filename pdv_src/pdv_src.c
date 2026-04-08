@@ -6,9 +6,29 @@
 #include "hardware/timer.h"
 #include "ssd1306.h"
 
+// PINOS DO TECLADO MATRICIAL
+// Linhas
+#define ROWS 4
+uint row_pins[ROWS] = {16, 17, 18, 19};
+
+// Colunas
+#define COLUMNS 4
+uint columns_pins[COLUMNS] = {20, 4, 9, 8};
+
+char keymap[ROWS][COLUMNS] = {
+    {'1', '2', '3', 'A'},
+    {'4', '5', '6', 'B'},
+    {'7', '8', '9', 'C'},
+    {'*', '0', '#', 'D'},
+};
+
+// OUTROS PERIFÉRICOS
+// Display
 #define OLED_SDA_PIN 14
 #define OLED_SCL_PIN 15
+// Joystick
 #define JOYSTICK_VRY_PIN 26
+// Botões
 #define BTN_A 5
 #define BTN_B 6
 // #define BUZZER
@@ -33,6 +53,8 @@ int highlight = 0; // Índice do item selecionado no menu (0 a total)
 int shift = 0; // Índice do item que está no topo da tela (scroll)
 int joystick_posy; // Posição do eixo Y do joystick em valores decimais(0 a 4095)
 float total_bill = 0; // Variável que armazena valor total a se pagar pelos produtos
+float input_value = 0; // Variável que armazena o valor pago pelo cliente
+float change_value = 0; // Variável que armazena valor do troco
 bool atualizar_display_flag = true;
 
 int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
@@ -106,8 +128,13 @@ void render_frame_two(ssd1306_t *display){
     snprintf(bill_buffer, sizeof(bill_buffer), "Total: R$%.2f", total_bill); // snprintf: (onde salvar, tamanho, formato, variável)
     ssd1306_draw_string(display, 5, 20, 1, bill_buffer);
     // Imprime entrada de valor digitado e o troco(entrada - total)
-    ssd1306_draw_string(display, 5, 30, 1, "Entrada: R$0.00");
-    ssd1306_draw_string(display, 5, 40, 1, "Troco: R$0.00" );
+    char input_buffer[20];
+    snprintf(input_buffer, sizeof(input_buffer), "Entrada: R$%.2f", input_value); // snprintf: (onde salvar, tamanho, formato, variável)
+    ssd1306_draw_string(display, 5, 30, 1, input_buffer);
+
+    char change_value_buffer[20];
+    snprintf(change_value_buffer, sizeof(change_value_buffer), "Troco: R$%.2f", change_value); // snprintf: (onde salvar, tamanho, formato, variável)
+    ssd1306_draw_string(display, 5, 40, 1, change_value_buffer);
 
     ssd1306_draw_empty_square(display, 0, 50, 64, 12);
     ssd1306_draw_empty_square(display, 64, 50, 62, 12);
@@ -177,23 +204,26 @@ void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca 
     }
 }
 
-void setup_btn_gpios(){ // Inicializa e configura os pinos dos botões A e B
-    gpio_init(BTN_A); gpio_set_dir(BTN_A,GPIO_IN); gpio_pull_up(BTN_A);
-    gpio_init(BTN_B); gpio_set_dir(BTN_B, GPIO_IN); gpio_pull_up(BTN_B);
-}
+char read_keyboard(){
+    for (int i = 0; i < ROWS; i++){
+        gpio_put(row_pins[i], 1);
+        sleep_ms(10); // Delay para estabilização elétrica
 
-void setup_display_gpios(){ // Inicializa e configura os pinos do display
-    i2c_init(i2c1, 400000);
-    gpio_pull_up(OLED_SDA_PIN);
-    gpio_pull_up(OLED_SCL_PIN);
-    gpio_set_function(OLED_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(OLED_SCL_PIN, GPIO_FUNC_I2C);
-}
-
-void setup_joystick_gpio(){ // Inicializa e configura o pino do joystick do eixo Y
-    adc_init();
-    adc_gpio_init(JOYSTICK_VRY_PIN);
-    adc_select_input(0);
+        for (int j = 0; j < COLUMNS; j++){
+            if (gpio_get(columns_pins[j])){
+                sleep_ms(50); // Debounce
+                if (gpio_get(columns_pins[j])){
+                    while(gpio_get(columns_pins[j])){ // Trava enquanto usuário estiver segurando o botão
+                        sleep_ms(10);
+                    } 
+                    gpio_put(row_pins[i], 0);
+                    return keymap[i][j];
+                }
+            }
+        }
+        gpio_put(row_pins[i], 0); // Desativa
+    }
+    return '\0'; // Nenhuma tecla pressionada
 }
 
 int64_t debounce_alarm_timer_callback(alarm_id_t id, void *user_data){ // Função callback para o debounce de alarme de reativação das interrupções dos botôes A e B
@@ -254,6 +284,39 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
     add_alarm_in_ms(150, debounce_alarm_timer_callback, (void *)(intptr_t)gpio, false);     
 }
 
+void setup_btn_gpios(){ // Inicializa e configura os pinos dos botões A e B
+    gpio_init(BTN_A); gpio_set_dir(BTN_A,GPIO_IN); gpio_pull_up(BTN_A);
+    gpio_init(BTN_B); gpio_set_dir(BTN_B, GPIO_IN); gpio_pull_up(BTN_B);
+}
+
+void setup_display_gpios(){ // Inicializa e configura os pinos do display
+    i2c_init(i2c1, 400000);
+    gpio_pull_up(OLED_SDA_PIN);
+    gpio_pull_up(OLED_SCL_PIN);
+    gpio_set_function(OLED_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(OLED_SCL_PIN, GPIO_FUNC_I2C);
+}
+
+void setup_joystick_gpio(){ // Inicializa e configura o pino do joystick do eixo Y
+    adc_init();
+    adc_gpio_init(JOYSTICK_VRY_PIN);
+    adc_select_input(0);
+}
+
+void setup_matrix_keyboard_gpios(){ // Inicializa e configura os pinos do teclado matricial
+    // Configura linhas como saída e inicialmente em low
+    for (int i = 0; i < ROWS; i++){
+        gpio_init(row_pins[i]);
+        gpio_set_dir(row_pins[i], GPIO_OUT);
+        gpio_put(row_pins[i], 0);
+    }
+    // Configura colunas como entrada e em pull_dowm
+    for (int i = 0; i < COLUMNS; i++){
+        gpio_init(columns_pins[i]);
+        gpio_set_dir(columns_pins[i], GPIO_IN);
+        gpio_pull_down(columns_pins[i]);
+    }
+
 int main()
 {
     // Inicializa módulo stdio
@@ -275,6 +338,9 @@ int main()
     // Configurando o joystick
     setup_joystick_gpio();
 
+    // Configura teclado matricial
+    setup_matrix_keyboard_gpios();
+
     // Adiciona itens
     add_item("Cafe", 0, 5.50);
     add_item("Acucar", 0, 3.20);
@@ -289,12 +355,28 @@ int main()
     while (true) {
         // Condicional adiciona para evitar leituras analógicas sem necessidade
         if (frame==0){
+
             joystick_posy = adc_read();
             // Aciona handle_input e envia os argumento com base nas seguintes condições: 1 = BAIXO, -1 = CIMA
             if (joystick_posy > 3072) // 3° quartil de 4096
                 handle_input(-1);
             else if (joystick_posy < 1024) // 1° quartil de 4096
                 handle_input(1);
+
+        } else if (frame==2){
+
+            char tecla = read_keyboard();
+            if (tecla != '\0'){
+                // Se for um dígito entre 0 a 9
+                atualizar_display_flag = true;
+                if (tecla >= '0'  && tecla <= '9'){
+                    int digito = tecla - '0';
+                    // Valor cresce iniciando nas casas decimais
+                    input_value = ((input_value * 1000.0) + digito)/100.0;
+                } else if (tecla == 'D'){ // Reseta input_value (Clear)
+                    input_value = 0.0;
+                }
+            }
         }
         
         // Se a flag for atualizada para true, o diplay é renderizado novamente
@@ -304,6 +386,9 @@ int main()
             for(int i=0; i < current_count; i++){
                 total_bill += inventory[i].price * inventory[i].quantity;
             }
+
+            //  Cálculo do troco
+            change_value = input_value - total_bill;
 
             // Desativa flag para que não ocorra atualizações de display desnecessária
             atualizar_display_flag = false;
