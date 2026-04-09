@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "hardware/adc.h"
@@ -199,15 +200,25 @@ uint16_t crc16_ccitt_calculation(char* data) { // Função para calcular o CRC16
     return crc & 0xFFFF;
 }
 
-void generate_pix_string(char* buffer, char* key, float* value) { // Gera uma string BR code para pagamentos em pix
+void generate_pix_string(char* buffer, char* key, float value) { // Gera uma string BR code para pagamentos em pix
     char payload[256]; 
     char field26[100]; // Campo da string que armazena os dados do destinatário para o correto envio do pix
     char value_string[15]; // Armazena a string do valor do pix
     
     sprintf(value_string, "%.2f", value); // Transforma o float 'value' em uma string com 2 casas decimais(ex: 20.26)
     
+    // Filtro para remover caracteres indesejados
+    char clean_key[80];
+    int j=0;
+
+    for (int i=0; key[i]; i++){
+        if (isalnum(key[i]) || key[i]=='@' || key[i]=='+')
+            clean_key[j++] = key[i];
+        clean_key[j] = '\0';
+    }
+
     // Monta o campo 26: 0014br.gov.bcb.pix + 01 + tamanho da chave(sempre 2 dígitos) + chave
-    sprintf(field26, "0014BR.GOV.BCB.PIX01%02d%s", (int)strlen(key), key);
+    sprintf(field26, "0014BR.GOV.BCB.PIX01%02d%s", (int)strlen(clean_key), clean_key);
 
     // Monta estrutura do BR Code: 00(02)01 | 26(tamanho)dados | 52(04)0000 | 53(03)986 | 54(tamanho)valor | 58(02)BR | 59(01)N | 60(01)C | 62(07)0503*** | 63(04)
     sprintf(payload, "00020126%02d%s52040000530398654%02d%s5802BR5901N6001C62070503***6304", 
