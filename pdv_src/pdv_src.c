@@ -323,8 +323,8 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
             frame = 3;  
         }
-    }else if (frame==2){
-        // INTERRUPÇÕES FRAME 2
+    }else if (frame==2 || frame == 3){
+        // INTERRUPÇÕES FRAME 2 E 3
 
         if (gpio==BTN_A){ //CANCELAR resultará no cancelamento da compra e irá limpar os itens escolhidos em 'inventory'.
             gpio_set_irq_enabled(BTN_A, GPIO_IRQ_EDGE_FALL, false);
@@ -332,8 +332,10 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
         } else if (gpio==BTN_B){ // CONLUIR resultará na conclusão da comprar e irá limpar os itens escolhidos em 'inventory' para uma nova compra
             // ADICIONAR VALIDAÇÃO COM BUZZER PARA QUANDO CHANGE_VALUE FOR >= 0 E PARA QUANDO NÃO ATENDER A CONDIÇÃO
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
-            if (change_value>=0){
+            if (change_value>=0 && frame==2){
                 restart_menu(); 
+            }else if (frame==3){
+                restart_menu();
             }
         }
     }
