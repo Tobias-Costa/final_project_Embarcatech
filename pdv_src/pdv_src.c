@@ -347,6 +347,7 @@ void setup_matrix_keyboard_gpios(){ // Inicializa e configura os pinos do teclad
         gpio_set_dir(columns_pins[i], GPIO_IN);
         gpio_pull_down(columns_pins[i]);
     }
+}
 
 int main()
 {
