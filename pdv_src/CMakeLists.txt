@@ -41,6 +41,11 @@ set(PICO_SSD1306_DIR "${CMAKE_CURRENT_LIST_DIR}/../libs/pico-ssd1306")
 # Inclui as configurações da biblioteca
 include("${PICO_SSD1306_DIR}/pico-ssd1306.cmake")
 
+#Configurando caminho do diretório da biblioteca
+set(QR_CODE_MASTER_DIR "${CMAKE_CURRENT_LIST_DIR}/../libs/qrcode-master")
+# Inclui as configurações da biblioteca
+include("${QR_CODE_MASTER_DIR}/qrcode-master.cmake")
+
 # ---------------------------------------------------------------------
 
 # Add executable. Default name is the project name, version 0.1
@@ -60,13 +65,15 @@ target_link_libraries(pdv_src
         hardware_i2c
         pico-ssd1306
         hardware_adc
-        hardware_timer)
+        hardware_timer
+        qrcode-master)
 
 # Add the standard include files to the build
 target_include_directories(pdv_src PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
         #ADICIONAR DIRETÓRIO DAS BIBLIOTECAS ADICIONAIS
         ${PICO_SSD1306_DIR} 
+        ${QR_CODE_MASTER_DIR}
 )
 
 # Add any user requested libraries

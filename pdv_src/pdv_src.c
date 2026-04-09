@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <ctype.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
@@ -454,7 +455,7 @@ int main()
             // Correção de precisão para eliminar o "-0.00"
             if (change_value < 0 && change_value > -0.001) {
                 change_value = 0.0;
-}
+            }
 
             // Desativa flag para que não ocorra atualizações de display desnecessária
             atualizar_display_flag = false;
