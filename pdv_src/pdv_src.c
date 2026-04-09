@@ -105,7 +105,7 @@ void render_frame_zero(ssd1306_t *display){
 
 void render_frame_one(ssd1306_t *display){
     // Desenha Cabeçalho
-    ssd1306_draw_string(display, 40, 5, 1, "Pagamento:");
+    ssd1306_draw_string(display, 35, 5, 1, "Pagamento:");
     ssd1306_draw_line(display,5,15,120,15);
     // Imprime no display o valor total dos itens escolhidos
     char bill_buffer[20];
@@ -144,6 +144,18 @@ void render_frame_two(ssd1306_t *display){
 
 }
 
+void render_frame_three(ssd1306_t *display){
+    // Desenha QRCODE
+    
+
+
+    ssd1306_draw_empty_square(display, 0, 50, 64, 12);
+    ssd1306_draw_empty_square(display, 64, 50, 62, 12);
+    ssd1306_draw_string(display, 10, 53, 1, "Cancelar");
+    ssd1306_draw_string(display, 70, 53, 1, "Concluir");
+}
+
+
 void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação no display
     ssd1306_clear(display);
     if (frame==0){
@@ -152,6 +164,8 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
         render_frame_one(display);
     }else if (frame==2){
         render_frame_two(display);
+    } else if (frame==3){
+        render_frame_three(display);
     }
 
     ssd1306_show(display);
@@ -239,8 +253,10 @@ void add_item(const char* name, int qty, float price) { // Trata e adiciona os d
 }
 
 void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca highlight e shift iguais a 0.
+    frame = 0;
     highlight = 0;
     shift = 0;
+    input_value = 0;
     for(int i=0; i < current_count; i++){
         inventory[i].quantity = 0;
     }
@@ -313,11 +329,12 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
         if (gpio==BTN_A){ //CANCELAR resultará no cancelamento da compra e irá limpar os itens escolhidos em 'inventory'.
             gpio_set_irq_enabled(BTN_A, GPIO_IRQ_EDGE_FALL, false);
             restart_menu();
-            frame = 0;
         } else if (gpio==BTN_B){ // CONLUIR resultará na conclusão da comprar e irá limpar os itens escolhidos em 'inventory' para uma nova compra
+            // ADICIONAR VALIDAÇÃO COM BUZZER PARA QUANDO CHANGE_VALUE FOR >= 0 E PARA QUANDO NÃO ATENDER A CONDIÇÃO
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
-            restart_menu();
-            frame = 0;  
+            if (change_value>=0){
+                restart_menu(); 
+            }
         }
     }
 
