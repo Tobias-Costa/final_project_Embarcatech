@@ -7,6 +7,7 @@
 #include "hardware/adc.h"
 #include "hardware/timer.h"
 #include "ssd1306.h"
+#include "qrcode.h"
 
 // PINOS DO TECLADO MATRICIAL
 // Linhas
@@ -57,6 +58,8 @@ int joystick_posy; // Posição do eixo Y do joystick em valores decimais(0 a 40
 float total_bill = 0; // Variável que armazena valor total a se pagar pelos produtos
 float input_value = 0; // Variável que armazena o valor pago pelo cliente
 float change_value = 0; // Variável que armazena valor do troco
+char string_pix_buffer[512]; // Armazena o BR code do pix
+char pix_key[256]; // Armazena string da chave pix(email,cpf,telefone,cnpj)
 bool atualizar_display_flag = true;
 
 int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
@@ -65,6 +68,47 @@ int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu princi
     } else{
         return current_count; // Calcula o índice que mostrará apenas os itens.
     }
+}
+
+uint16_t crc16_ccitt_calculation(char* data) { // Função para calcular o CRC16 [Importante para gera uma string BR code (Polinômio 0x1021)] 
+    uint16_t crc = 0xFFFF;
+    for (int i = 0; i < strlen(data); i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int j = 0; j < 8; j++) {
+            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+            else crc <<= 1;
+        }
+    }
+    return crc & 0xFFFF;
+}
+
+void generate_pix_string(char* buffer, char* key, float value) { // Gera uma string BR code para pagamentos em pix
+    char payload[256]; 
+    char field26[100]; // Campo da string que armazena os dados do destinatário para o correto envio do pix
+    char value_string[15]; // Armazena a string do valor do pix
+    
+    sprintf(value_string, "%.2f", value); // Transforma o float 'value' em uma string com 2 casas decimais(ex: 20.26)
+    
+    // Filtro para remover caracteres indesejados
+    char clean_key[80];
+    int j=0;
+
+    for (int i=0; key[i]; i++){
+        if (isalnum(key[i]) || key[i]=='@' || key[i]=='+')
+            clean_key[j++] = key[i];
+        clean_key[j] = '\0';
+    }
+
+    // Monta o campo 26: 0014br.gov.bcb.pix + 01 + tamanho da chave(sempre 2 dígitos) + chave
+    sprintf(field26, "0014BR.GOV.BCB.PIX01%02d%s", (int)strlen(clean_key), clean_key);
+
+    // Monta estrutura do BR Code: 00(02)01 | 26(tamanho)dados | 52(04)0000 | 53(03)986 | 54(tamanho)valor | 58(02)BR | 59(01)N | 60(01)C | 62(07)0503*** | 63(04)
+    sprintf(payload, "00020126%02d%s52040000530398654%02d%s5802BR5901N6001C62070503***6304", 
+            (int)strlen(field26), field26, (int)strlen(value_string), value_string);
+
+    // Calcula CRC e anexa ao final
+    uint16_t crc = crc16_ccitt_calculation(payload);
+    sprintf(buffer, "%s%04X", payload, crc);
 }
 
 void render_frame_zero(ssd1306_t *display){
@@ -146,19 +190,35 @@ void render_frame_two(ssd1306_t *display){
 }
 
 void render_frame_three(ssd1306_t *display){
+    // Inicializa e cria QRCODE a partir da string do BRcode pix
+    QRCode qrcode;
+    uint8_t qrcodeBytes[qrcode_getBufferSize(11)]; // Versão 11 (61x61 pixels)
+    qrcode_initText(&qrcode, qrcodeBytes, 11, ECC_QUARTILE, string_pix_buffer);
+    // Define uma margem(offset) para centralizar o qrcode
+    int offset_x = 60;
+    int offset_y = 2;
     // Desenha QRCODE
-    
-
-
-    ssd1306_draw_empty_square(display, 0, 50, 64, 12);
-    ssd1306_draw_empty_square(display, 64, 50, 62, 12);
-    ssd1306_draw_string(display, 10, 53, 1, "Cancelar");
-    ssd1306_draw_string(display, 70, 53, 1, "Concluir");
+    for (uint8_t y = 0; y < qrcode.size; y++) {
+        for (uint8_t x = 0; x < qrcode.size; x++) {
+            if (qrcode_getModule(&qrcode, x, y)) {
+                ssd1306_draw_pixel(display, (x)+offset_x, (y)+offset_y);
+                ssd1306_invert(display, 1);
+            }
+        }
+    }
+    ssd1306_draw_empty_square(display, 2, 5, 55, 25);
+    ssd1306_draw_empty_square(display, 2, 36, 55, 25);
+    ssd1306_draw_string(display, 5, 10, 1, "Cancelar");
+    ssd1306_draw_string(display, 5, 20, 1, ">Botao A");
+    ssd1306_draw_string(display, 5, 40, 1, "Concluir");
+    ssd1306_draw_string(display, 5, 50, 1, ">Botao B");
 }
-
 
 void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação no display
     ssd1306_clear(display);
+    // Torna a tela novamente ao padrão
+    ssd1306_invert(display, 0);
+
     if (frame==0){
         render_frame_zero(display);     
     }else if (frame==1){
@@ -166,6 +226,8 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
     }else if (frame==2){
         render_frame_two(display);
     } else if (frame==3){
+        // Cria BRCODE
+        // generate_pix_string(string_pix_buffer, pix_key, total_bill);
         render_frame_three(display);
     }
 
@@ -201,47 +263,6 @@ void handle_input(int direction) { // A partir da direção do joystick atualiza
     }
 
     atualizar_display_flag = true;
-}
-
-uint16_t crc16_ccitt_calculation(char* data) { // Função para calcular o CRC16 [Importante para gera uma string BR code (Polinômio 0x1021)] 
-    uint16_t crc = 0xFFFF;
-    for (int i = 0; i < strlen(data); i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int j = 0; j < 8; j++) {
-            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
-            else crc <<= 1;
-        }
-    }
-    return crc & 0xFFFF;
-}
-
-void generate_pix_string(char* buffer, char* key, float value) { // Gera uma string BR code para pagamentos em pix
-    char payload[256]; 
-    char field26[100]; // Campo da string que armazena os dados do destinatário para o correto envio do pix
-    char value_string[15]; // Armazena a string do valor do pix
-    
-    sprintf(value_string, "%.2f", value); // Transforma o float 'value' em uma string com 2 casas decimais(ex: 20.26)
-    
-    // Filtro para remover caracteres indesejados
-    char clean_key[80];
-    int j=0;
-
-    for (int i=0; key[i]; i++){
-        if (isalnum(key[i]) || key[i]=='@' || key[i]=='+')
-            clean_key[j++] = key[i];
-        clean_key[j] = '\0';
-    }
-
-    // Monta o campo 26: 0014br.gov.bcb.pix + 01 + tamanho da chave(sempre 2 dígitos) + chave
-    sprintf(field26, "0014BR.GOV.BCB.PIX01%02d%s", (int)strlen(clean_key), clean_key);
-
-    // Monta estrutura do BR Code: 00(02)01 | 26(tamanho)dados | 52(04)0000 | 53(03)986 | 54(tamanho)valor | 58(02)BR | 59(01)N | 60(01)C | 62(07)0503*** | 63(04)
-    sprintf(payload, "00020126%02d%s52040000530398654%02d%s5802BR5901N6001C62070503***6304", 
-            (int)strlen(field26), field26, (int)strlen(value_string), value_string);
-
-    // Calcula CRC e anexa ao final
-    uint16_t crc = crc16_ccitt_calculation(payload);
-    sprintf(buffer, "%s%04X", payload, crc);
 }
 
 void add_item(const char* name, int qty, float price) { // Trata e adiciona os dados na struct principal(inventory)
