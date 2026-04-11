@@ -59,7 +59,7 @@ float total_bill = 0; // Variável que armazena valor total a se pagar pelos pro
 float input_value = 0; // Variável que armazena o valor pago pelo cliente
 float change_value = 0; // Variável que armazena valor do troco
 char string_pix_buffer[512]; // Armazena o BR code do pix
-char pix_key[256]; // Armazena string da chave pix(email,cpf,telefone,cnpj)
+char pix_key[256] = "SUA-CHAVE-AQUI"; // Armazena string da chave pix(email,cpf,telefone,cnpj)
 bool atualizar_display_flag = true;
 
 int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
@@ -91,13 +91,14 @@ void generate_pix_string(char* buffer, char* key, float value) { // Gera uma str
     
     // Filtro para remover caracteres indesejados
     char clean_key[80];
+    bool is_email = (strchr(key, '@') != NULL); // Verifica se existe '@' na chave
     int j=0;
 
     for (int i=0; key[i]; i++){
-        if (isalnum(key[i]) || key[i]=='@' || key[i]=='+')
+        if (isalnum(key[i]) || key[i]=='@' || key[i]=='+' || (key[i] == '.' && is_email))
             clean_key[j++] = key[i];
-        clean_key[j] = '\0';
     }
+    clean_key[j] = '\0'; //Fecha a string
 
     // Monta o campo 26: 0014br.gov.bcb.pix + 01 + tamanho da chave(sempre 2 dígitos) + chave
     sprintf(field26, "0014BR.GOV.BCB.PIX01%02d%s", (int)strlen(clean_key), clean_key);
@@ -227,7 +228,7 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
         render_frame_two(display);
     } else if (frame==3){
         // Cria BRCODE
-        // generate_pix_string(string_pix_buffer, pix_key, total_bill);
+        generate_pix_string(string_pix_buffer, pix_key, total_bill);
         render_frame_three(display);
     }
 
