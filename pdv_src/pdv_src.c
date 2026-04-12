@@ -6,6 +6,7 @@
 #include "hardware/i2c.h"
 #include "hardware/adc.h"
 #include "hardware/timer.h"
+#include "hardware/pwm.h"
 #include "ssd1306.h"
 #include "qrcode.h"
 #include "pico/cyw43_arch.h"
@@ -41,7 +42,10 @@ char keymap[ROWS][COLUMNS] = {
 #define BTN_A 5
 #define BTN_B 6
 
-// Configurações do Sistema
+// Buzzer
+#define BUZZER_PIN 10
+
+// CONFIGURAÇÕES DO SISTEMA
 #define MAX_ITEMS 20          // Limite da matriz
 #define VISIBLE_LINES 4       // Linhas que cabem no display
 #define LINE_HEIGHT 10        // Altura de cada linha em pixels
@@ -65,6 +69,7 @@ MenuItem inventory[MAX_ITEMS]; // Matriz de structs
 volatile int frame = 0; // Representa a tela em que o usuário está
 volatile bool mqtt_connected = false; // Booleano que indica se está conectado ao broker mqtt
 volatile bool send_sale_flag = false; // Indica se uma venda foi finalizada e está pronta para envio
+volatile bool buzzer_flag = false; // Sinaliza quando um sinal sonoro deve ser reproduzido
 int current_count = 0; // Quantos itens existem no inventário atual
 int highlight = 0; // Índice do item selecionado no menu (0 a total)
 int shift = 0; // Índice do item que está no topo da tela (scroll)
@@ -78,7 +83,7 @@ bool atualizar_display_flag = true; // Flag que sinaliza para o display ser atua
 
 mqtt_client_t *static_client;
 struct mqtt_connect_client_info_t ci;
-repeating_timer_t timer;
+uint buzzer_slice;
 
 // FUNÇÕES DE CONEXÃO WIFI E MQTT
 
@@ -362,7 +367,7 @@ void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca 
     }
 }
 
-// FUNÇÕES DE LEITURA DE PERIFÉRICOS
+// FUNÇÕES DE TRATAMENTO DE PERIFÉRICOS
 
 void handle_input(int direction) { // A partir da direção do joystick atualiza as variáveis highlight, shift e atualizar_display_flag
     
@@ -395,6 +400,15 @@ void handle_input(int direction) { // A partir da direção do joystick atualiza
     atualizar_display_flag = true;
 }
 
+void buzzer_tone(int freq, int duration_ms) {
+    uint32_t clock = 125000000; // clock da Pico
+    uint32_t top = clock / freq - 1;
+    pwm_set_wrap(buzzer_slice, top);
+    pwm_set_gpio_level(BUZZER_PIN, top / 2); // 50% duty
+    sleep_ms(duration_ms);
+    pwm_set_gpio_level(BUZZER_PIN, 0); // desliga
+}
+
 char read_keyboard(){ // Função responsável por ler os caracteres do teclado matricial
     for (int i = 0; i < ROWS; i++){
         gpio_put(row_pins[i], 1);
@@ -404,6 +418,7 @@ char read_keyboard(){ // Função responsável por ler os caracteres do teclado 
             if (gpio_get(columns_pins[j])){
                 sleep_ms(50); // Debounce
                 if (gpio_get(columns_pins[j])){
+                    buzzer_tone(2500,100);
                     while(gpio_get(columns_pins[j])){ // Trava enquanto usuário estiver segurando o botão
                         sleep_ms(10);
                     } 
@@ -477,7 +492,8 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
 
     // Atualiza a tela e ativa o alarme de debounce
     atualizar_display_flag = true;
-    add_alarm_in_ms(150, debounce_alarm_timer_callback, (void *)(intptr_t)gpio, false);     
+    buzzer_flag = true;
+    add_alarm_in_ms(200, debounce_alarm_timer_callback, (void *)(intptr_t)gpio, false);     
 }
 
 // FUNÇÃO DE ADICIONAR ITENS
@@ -491,6 +507,14 @@ void add_item(const char* name, int qty, float price) { // Trata e adiciona os d
 }
 
 // FUNÇÕES DE SETUP DE PERIFÉRIOCS
+
+void setup_buzzer(){ // Inicializa o buzzer e configura-o para usar PWM
+    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
+    buzzer_slice = pwm_gpio_to_slice_num(BUZZER_PIN);
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 4.0f); // ajusta frequência base
+    pwm_set_enabled(buzzer_slice, true);
+}
 
 void setup_btn_gpios(){ // Inicializa e configura os pinos dos botões A e B
     gpio_init(BTN_A); gpio_set_dir(BTN_A,GPIO_IN); gpio_pull_up(BTN_A);
@@ -550,6 +574,9 @@ int main()
     // Configura teclado matricial
     setup_matrix_keyboard_gpios();
     
+    // Configura buzzer
+    setup_buzzer();
+
     // Configura wifi
     setup_wifi();
 
@@ -645,6 +672,11 @@ int main()
             send_sale_mqtt(static_client);
             restart_menu();
             atualizar_display_flag = true;
+        }
+
+        if (buzzer_flag){
+            buzzer_flag=false;
+            buzzer_tone(2500, 100);
         }
 
         sleep_ms(200);
