@@ -45,6 +45,10 @@ char keymap[ROWS][COLUMNS] = {
 // Buzzer
 #define BUZZER_PIN 10
 
+// LEDS RGB
+#define GREEN_LED_PIN 11
+#define RED_LED_PIN 13
+
 // CONFIGURAÇÕES DO SISTEMA
 #define MAX_ITEMS 20          // Limite da matriz
 #define VISIBLE_LINES 4       // Linhas que cabem no display
@@ -84,101 +88,6 @@ bool atualizar_display_flag = true; // Flag que sinaliza para o display ser atua
 mqtt_client_t *static_client;
 struct mqtt_connect_client_info_t ci;
 uint buzzer_slice;
-
-// FUNÇÕES DE CONEXÃO WIFI E MQTT
-
-static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) { // Callback quando a conexão MQTT muda de estado
-    if (status == MQTT_CONNECT_ACCEPTED) {
-        printf("Conectado ao ThingsBoard!\n");
-        mqtt_connected = true;
-    } else {
-        printf("Falha na conexão MQTT: %d\n", status);
-        mqtt_connected = false;
-    }
-}
-
-void send_telemetry(mqtt_client_t *client, const char *payload) { // Função para enviar dados (Telemetria)
-    if (mqtt_client_is_connected(client)) {
-        cyw43_arch_lwip_begin();
-        mqtt_publish(client, TELEMETRY_TOPIC, payload, strlen(payload), 1, 0, NULL, NULL);
-        cyw43_arch_lwip_end();
-        printf("Dados enviados: %s\n", payload);
-    }
-}
-
-static void dns_callback(const char *name, const ip_addr_t *ipaddr, void *arg) { // Função responsável por resolver o IP do ThingsBoard CLoud
-    if (ipaddr) {
-        printf("DNS resolvido!\n");
-
-        cyw43_arch_lwip_begin();
-        mqtt_client_connect(static_client, ipaddr, 1883, mqtt_connection_cb, NULL, &ci);
-        cyw43_arch_lwip_end();
-
-    } else {
-        printf("Falha no DNS\n");
-    }
-}
-
-void setup_wifi(){ // Função responsável por configurar a conexão wifi
-    // Inicializa a arquitetura do chip Wi-Fi CYW43
-    if (cyw43_arch_init()) {
-        printf("Falha ao inicializar Wi-Fi\n");
-        return;
-    }
-
-    // Ativa o modo Estação (STA) para se conectar a um roteador
-    cyw43_arch_enable_sta_mode();
-
-    printf("Conectando ao Wi-Fi %s...\n", WIFI_SSID);
-
-    // Tenta conectar com um timeout de 30 segundos
-    int resultado = cyw43_arch_wifi_connect_timeout_ms(
-        WIFI_SSID, 
-        WIFI_PASSWORD, 
-        CYW43_AUTH_WPA2_AES_PSK, 
-        30000
-    );
-
-    if (resultado != 0) {
-        printf("Erro ao conectar: %d\n", resultado);
-    } else {
-        printf("Conectado com sucesso!\n");
-    }
-
-}
-
-void send_sale_mqtt(mqtt_client_t *client){ // Prepara os dados de vendas e envia uma string para a função send_telemetry() para em seguida enviar ao servidor via mqtt
-    char payload[512];
-    char items[300] = "";
-    bool first_item = true;
-
-    for (int i = 0; i < current_count; i++) {
-            
-            if (!first_item){
-                strcat(items, ",");
-            }
-            first_item = false;
-
-            char item[64];
-            snprintf(item, sizeof(item),
-                "\"%s\": %d",
-                inventory[i].name,
-                inventory[i].quantity,
-                inventory[i].price
-            );
-            strcat(items, item);
-    
-    }
-
-    snprintf(payload, sizeof(payload),
-        "{\"total\": %.2f, %s}",
-        total_bill,
-        items
-    );
-
-    send_telemetry(client, payload);
-
-}
 
 // FUNÇÕES DE GERAÇÃO DE BR CODE
 
@@ -369,6 +278,11 @@ void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca 
 
 // FUNÇÕES DE TRATAMENTO DE PERIFÉRICOS
 
+void turn_on_sucess_led(){ // Acende o LED Verde para sinalizar que tudo ocorreu bem no setup
+    gpio_put(RED_LED_PIN, 0);
+    gpio_put(GREEN_LED_PIN, 1);
+}
+
 void handle_input(int direction) { // A partir da direção do joystick atualiza as variáveis highlight, shift e atualizar_display_flag
     
     // Caso o usuário tenha selecionado pelo menos um produto, aparecerá o selecionável 'Prosseguir'. Caso contrário, não é desenhado.
@@ -431,6 +345,103 @@ char read_keyboard(){ // Função responsável por ler os caracteres do teclado 
     }
     return '\0'; // Nenhuma tecla pressionada
 }
+
+// FUNÇÕES DE CONEXÃO WIFI E MQTT
+
+static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) { // Callback quando a conexão MQTT muda de estado
+    if (status == MQTT_CONNECT_ACCEPTED) {
+        printf("Conectado ao ThingsBoard!\n");
+        turn_on_sucess_led();
+        mqtt_connected = true;
+    } else {
+        printf("Falha na conexão MQTT: %d\n", status);
+        mqtt_connected = false;
+    }
+}
+
+void send_telemetry(mqtt_client_t *client, const char *payload) { // Função para enviar dados (Telemetria)
+    if (mqtt_client_is_connected(client)) {
+        cyw43_arch_lwip_begin();
+        mqtt_publish(client, TELEMETRY_TOPIC, payload, strlen(payload), 1, 0, NULL, NULL);
+        cyw43_arch_lwip_end();
+        printf("Dados enviados: %s\n", payload);
+    }
+}
+
+static void dns_callback(const char *name, const ip_addr_t *ipaddr, void *arg) { // Função responsável por resolver o IP do ThingsBoard CLoud
+    if (ipaddr) {
+        printf("DNS resolvido!\n");
+
+        cyw43_arch_lwip_begin();
+        mqtt_client_connect(static_client, ipaddr, 1883, mqtt_connection_cb, NULL, &ci);
+        cyw43_arch_lwip_end();
+
+    } else {
+        printf("Falha no DNS\n");
+    }
+}
+
+void setup_wifi(){ // Função responsável por configurar a conexão wifi
+    // Inicializa a arquitetura do chip Wi-Fi CYW43
+    if (cyw43_arch_init()) {
+        printf("Falha ao inicializar Wi-Fi\n");
+        return;
+    }
+
+    // Ativa o modo Estação (STA) para se conectar a um roteador
+    cyw43_arch_enable_sta_mode();
+
+    printf("Conectando ao Wi-Fi %s...\n", WIFI_SSID);
+
+    // Tenta conectar com um timeout de 30 segundos
+    int resultado = cyw43_arch_wifi_connect_timeout_ms(
+        WIFI_SSID, 
+        WIFI_PASSWORD, 
+        CYW43_AUTH_WPA2_AES_PSK, 
+        30000
+    );
+
+    if (resultado != 0) {
+        printf("Erro ao conectar: %d\n", resultado);
+    } else {
+        printf("Conectado com sucesso!\n");
+    }
+
+}
+
+void send_sale_mqtt(mqtt_client_t *client){ // Prepara os dados de vendas e envia uma string para a função send_telemetry() para em seguida enviar ao servidor via mqtt
+    char payload[512];
+    char items[300] = "";
+    bool first_item = true;
+
+    for (int i = 0; i < current_count; i++) {
+            
+            if (!first_item){
+                strcat(items, ",");
+            }
+            first_item = false;
+
+            char item[64];
+            snprintf(item, sizeof(item),
+                "\"%s\": %d",
+                inventory[i].name,
+                inventory[i].quantity,
+                inventory[i].price
+            );
+            strcat(items, item);
+    
+    }
+
+    snprintf(payload, sizeof(payload),
+        "{\"total\": %.2f, %s}",
+        total_bill,
+        items
+    );
+
+    send_telemetry(client, payload);
+
+}
+
 
 // FUNÇÕES DE INTERRUPÇÕES
 
@@ -516,6 +527,11 @@ void setup_buzzer(){ // Inicializa o buzzer e configura-o para usar PWM
     pwm_set_enabled(buzzer_slice, true);
 }
 
+void setup_leds_gpio(){ // Inicializa os leds verde e vermelho
+    gpio_init(GREEN_LED_PIN); gpio_set_dir(GREEN_LED_PIN, GPIO_OUT); gpio_put(GREEN_LED_PIN, 0);
+    gpio_init(RED_LED_PIN); gpio_set_dir(RED_LED_PIN, GPIO_OUT); gpio_put(RED_LED_PIN, 1);
+}
+
 void setup_btn_gpios(){ // Inicializa e configura os pinos dos botões A e B
     gpio_init(BTN_A); gpio_set_dir(BTN_A,GPIO_IN); gpio_pull_up(BTN_A);
     gpio_init(BTN_B); gpio_set_dir(BTN_B, GPIO_IN); gpio_pull_up(BTN_B);
@@ -555,6 +571,7 @@ int main()
     // Inicializa módulo stdio
     stdio_init_all();
 
+
     // Configurando botões A e B
     setup_btn_gpios();
 
@@ -576,6 +593,9 @@ int main()
     
     // Configura buzzer
     setup_buzzer();
+
+    // Configura LEDS e configura inicialmente pino do led vermelho como HIGH para sinalizar que wifi e o broker mqtt ainda estão sendo conectados
+    setup_leds_gpio();
 
     // Configura wifi
     setup_wifi();
