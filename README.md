@@ -25,7 +25,7 @@ Após ligar o dispositivo e estabelecer a conexão Wi-Fi, o fluxo de operação 
 1.  **Seleção de Produtos:** Utilize o **Joystick** para navegar entre os itens listados no display OLED. Pressione o botão B para adicionar itens ao carrinho e o botão A para tirar itens do carrinho.
 2.  **Fechamento do Pedido:** Após selecionar os produtos, avance para a tela de pagamento navegando até o final do menu dos itens e clicando em ">>Prosseguir<<". Na tela de pagamento o sistema calculará o valor total automaticamente.
 3.  **Escolha do Pagamento:**
-    *   **Dinheiro:** Selecione a opção 'Dinheiro' com o botão A e insira o valor recebido utilizando o **Teclado Matricial**. O sistema exibirá o troco no display.
+    *   **Dinheiro:** Selecione a opção 'Dinheiro' com o botão A e insira o valor recebido utilizando o **Teclado Matricial**. O sistema exibirá o troco no display. Caso queira apagar o que foi digitado e reiniciar o valor da entrada, aperte a tecla "D" para deletar.
     *   **PIX:** Selecione a opção 'Pix' com o botão B e o sistema gerará um **QR Code dinâmico** no visor OLED para simulação de pagamento.
 4.  **Finalização e IoT:** Ao confirmar a venda, os dados da transação (valor, itens, valor total) serão enviados automaticamente para o **ThingsBoard** via MQTT.
 
