@@ -19,6 +19,23 @@ Sistemas de caixa tradicionais costumam ser caros, dependentes de PCs e pouco fl
 
 ---
 
+## 🕹️ Como Operar o Sistema
+Após ligar o dispositivo e estabelecer a conexão Wi-Fi, o fluxo de operação segue estes passos:
+
+1.  **Seleção de Produtos:** Utilize o **Joystick** para navegar entre os itens listados no display OLED. Pressione o botão B para adicionar itens ao carrinho e o botão A para tirar itens do carrinho.
+2.  **Fechamento do Pedido:** Após selecionar os produtos, avance para a tela de pagamento navegando até o final do menu dos itens e clicando em ">>Prosseguir<<". Na tela de pagamento o sistema calculará o valor total automaticamente.
+3.  **Escolha do Pagamento:**
+    *   **Dinheiro:** Selecione a opção 'Dinheiro' com o botão A e insira o valor recebido utilizando o **Teclado Matricial**. O sistema exibirá o troco no display.
+    *   **PIX:** Selecione a opção 'Pix' com o botão B e o sistema gerará um **QR Code dinâmico** no visor OLED para simulação de pagamento.
+4.  **Finalização e IoT:** Ao confirmar a venda, os dados da transação (valor, itens, valor total) serão enviados automaticamente para o **ThingsBoard** via MQTT.
+
+### 📊 Monitoramento
+As vendas são enviadas em tempo real e podem ser visualizadas no Dashboard oficial:
+🔗 [Acesse o Dashboard no ThingsBoard](https://thingsboard.cloud/dashboard/42760740-35ff-11f1-9c01-37a7c07792f2?publicId=4fd1fb40-3624-11f1-9c01-37a7c07792f2)
+
+
+---
+
 ## 🧰 Hardware e Software
 
 ### Componentes Utilizados
@@ -57,12 +74,6 @@ Sistemas de caixa tradicionais costumam ser caros, dependentes de PCs e pouco fl
     *   Abra a pasta do projeto no VS Code.
     *   Utilize a extensão **Raspberry Pi Pico** para realizar o *Import*, *Compile* e *Flash* para a placa.
     *   > **Nota:** Importe na versão 1.5 do SDK
-
----
-
-## 📊 Monitoramento
-As vendas são enviadas em tempo real e podem ser visualizadas no Dashboard oficial:
-🔗 [Acesse o Dashboard no ThingsBoard](https://thingsboard.cloud/dashboard/42760740-35ff-11f1-9c01-37a7c07792f2?publicId=4fd1fb40-3624-11f1-9c01-37a7c07792f2)
 
 ---
 
