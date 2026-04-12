@@ -70,7 +70,11 @@ As vendas são enviadas em tempo real e podem ser visualizadas no Dashboard ofic
     #define WIFI_SSID "NOME-DA-REDE"
     #define WIFI_PASSWORD "SENHA-DA-REDE"
     ```
-3.  **Compilar e Carregar:**
+    Altere também a variável pix_key para a string da sua chave pix:
+    ```c
+    char pix_key[256] = "SUA-CHAVE-PIX";
+    ```
+4.  **Compilar e Carregar:**
     *   Abra a pasta do projeto no VS Code.
     *   Utilize a extensão **Raspberry Pi Pico** para realizar o *Import*, *Compile* e *Flash* para a placa.
     *   > **Nota:** Importe na versão 1.5 do SDK
