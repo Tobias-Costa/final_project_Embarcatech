@@ -1,11 +1,79 @@
-# final_project_Embarcatech
+# 📟 Smart PDV
 
-## Créditos
+O **Smart PDV** é um sistema de ponto de venda embarcado de baixo custo. Ele transforma uma Raspberry Pi Pico W em um terminal de vendas completo com interface física, processamento de pagamentos simulados e integração total com a nuvem via protocolo MQTT.
 
-Este projeto utiliza a biblioteca pico-ssd1306, desenvolvida por David Schramm.
-Repositório original: https://github.com/daschr/pico-ssd1306
-Licença: [MIT](https://github.com/daschr/pico-ssd1306/blob/main/LICENSE)
+## ❗ Problema Resolvido
+Sistemas de caixa tradicionais costumam ser caros, dependentes de PCs e pouco flexíveis. Este projeto oferece:
+*   **Baixo Custo:** Hardware acessível e eficiente.
+*   **Portabilidade:** Sistema embarcado autônomo.
+*   **Conectividade IoT:** Monitoramento de vendas em tempo real via **ThingsBoard**.
 
-Este projeto utiliza a biblioteca QRCode, desenvolvida por Richard Moore.
-Repositório original: https://github.com/ricmoo/qrcode/
-Licença: [MIT](https://github.com/ricmoo/QRCode/blob/master/LICENSE.txt)
+---
+
+## 🚀 Funcionalidades
+- ✅ **Menu Interativo:** Navegação fluida em display OLED SSD1306.
+- ✅ **Controle Físico:** Navegação via Joystick e entrada de valores por Teclado Matricial 4x4.
+- ✅ **Pagamentos:** Cálculo automático de troco e geração de **QR Code PIX** (padrão BR Code).
+- ✅ **Feedback Multimodal:** Avisos sonoros (Buzzer) e visuais (LEDs RGB).
+- ✅ **Nuvem:** Conexão Wi-Fi estável e telemetria via MQTT.
+
+---
+
+## 🧰 Hardware e Software
+
+### Componentes Utilizados
+> **Nota:** O projeto foi desenvolvido utilizando a placa **BitDogLab**. Caso utilize componentes avulsos, siga a lista abaixo:
+*   Raspberry Pi Pico W
+*   Display OLED SSD1306 (I2C)
+*   Teclado Matricial 4x4
+*   Joystick Analógico e Botões (Push buttons)
+*   Buzzer e LEDs
+*   Protoboard e Jumpers
+
+### Requisitos de Software
+*   [Pico SDK](https://github.com) configurado.
+*   GCC ARM Toolchain & CMake.
+*   **Extensões VS Code sugeridas:**
+    *   *Raspberry Pi Pico Extension* (Oficial)
+    *   *C/C++ (Microsoft)*
+    *   *CMake (twxs)*
+    *   *CMake Tools (Microsoft)*
+
+---
+
+## 🛠️ Instalação e Configuração
+
+1.  **Clonar o repositório:**
+    ```bash
+    git clone https://github.com/Tobias-Costa/final_project_Embarcatech.git
+    ```
+2.  **Configurar Credenciais (Obrigatório):**
+    No código fonte, altere as definições para os dados da sua rede:
+    ```c
+    #define WIFI_SSID "NOME-DA-REDE"
+    #define WIFI_PASSWORD "SENHA-DA-REDE"
+    ```
+3.  **Compilar e Carregar:**
+    *   Abra a pasta do projeto no VS Code.
+    *   Utilize a extensão **Raspberry Pi Pico** para realizar o *Import*, *Compile* e *Flash* para a placa.
+    *   > **Nota:** Importe na versão 1.5 do SDK
+
+---
+
+## 📊 Monitoramento
+As vendas são enviadas em tempo real e podem ser visualizadas no Dashboard oficial:
+🔗 [Acesse o Dashboard no ThingsBoard](https://thingsboard.cloud/dashboard/42760740-35ff-11f1-9c01-37a7c07792f2?publicId=4fd1fb40-3624-11f1-9c01-37a7c07792f2)
+
+---
+
+## 🤝 Créditos e Licença
+
+* Este projeto utiliza a biblioteca pico-ssd1306, desenvolvida por David Schramm.
+Repositório original: [Clique aqui](https://github.com/daschr/pico-ssd1306)
+  *  Licença: [MIT](https://github.com/daschr/pico-ssd1306/blob/main/LICENSE)
+
+* Este projeto utiliza a biblioteca QRCode, desenvolvida por Richard Moore.
+Repositório original: [Clique aqui](https://github.com/ricmoo/qrcode/)
+  * Licença: [MIT](https://github.com/ricmoo/QRCode/blob/master/LICENSE.txt)
+
+* Este projeto está sob a licença [MIT](LICENSE).
