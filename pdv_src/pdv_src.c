@@ -8,6 +8,9 @@
 #include "hardware/timer.h"
 #include "ssd1306.h"
 #include "qrcode.h"
+#include "pico/cyw43_arch.h"
+#include "lwip/apps/mqtt.h"
+#include "lwip/dns.h"
 
 // PINOS DO TECLADO MATRICIAL
 // Linhas
@@ -25,32 +28,43 @@ char keymap[ROWS][COLUMNS] = {
     {'*', '0', '#', 'D'},
 };
 
-// OUTROS PERIFÉRICOS
+// PERIFÉRICOS
+
 // Display
 #define OLED_SDA_PIN 14
 #define OLED_SCL_PIN 15
+
 // Joystick
 #define JOYSTICK_VRY_PIN 26
+
 // Botões
 #define BTN_A 5
 #define BTN_B 6
-// #define BUZZER
 
 // Configurações do Sistema
 #define MAX_ITEMS 20          // Limite da matriz
 #define VISIBLE_LINES 4       // Linhas que cabem no display
 #define LINE_HEIGHT 10        // Altura de cada linha em pixels
 
-// Estrutura de Dados
+// CONSTANTES DE CONEXÃO
+#define WIFI_SSID "NOME-DA-REDE"
+#define WIFI_PASSWORD "SENHA-DO-WIFI"
+#define MQTT_SERVER "mqtt.thingsboard.cloud"
+#define THINGSBOARD_TOKEN "THINGSBOARD-TOKEN"
+#define TELEMETRY_TOPIC "v1/devices/me/telemetry"
+
+// ESTRUTURA DE DADOS
 typedef struct {
     char name[15];    // Nome do item (ex: "Cafe")
     int quantity;      // Atributo Quantidade
     float price;       // Atributo Preço
 } MenuItem;
 
-// Variáveis globais
+// VARIÁVEIS GLOBAIS
 MenuItem inventory[MAX_ITEMS]; // Matriz de structs
 volatile int frame = 0; // Representa a tela em que o usuário está
+volatile bool mqtt_connected = false; // Booleano que indica se está conectado ao broker mqtt
+volatile bool send_sale_flag = false; // Indica se uma venda foi finalizada e está pronta para envio
 int current_count = 0; // Quantos itens existem no inventário atual
 int highlight = 0; // Índice do item selecionado no menu (0 a total)
 int shift = 0; // Índice do item que está no topo da tela (scroll)
@@ -59,16 +73,116 @@ float total_bill = 0; // Variável que armazena valor total a se pagar pelos pro
 float input_value = 0; // Variável que armazena o valor pago pelo cliente
 float change_value = 0; // Variável que armazena valor do troco
 char string_pix_buffer[512]; // Armazena o BR code do pix
-char pix_key[256] = "SUA-CHAVE-AQUI"; // Armazena string da chave pix(email,cpf,telefone,cnpj)
-bool atualizar_display_flag = true;
+char pix_key[256] = "SUA-CHAVE-PIX"; // Armazena string da chave pix(email,cpf,telefone,cnpj)
+bool atualizar_display_flag = true; // Flag que sinaliza para o display ser atualizado
 
-int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
-    if (total_bill>0){
-        return current_count + 1; // Calcula o índice que será usado para escrever os itens e o selecionável "Prosseguir" no display
-    } else{
-        return current_count; // Calcula o índice que mostrará apenas os itens.
+mqtt_client_t *static_client;
+struct mqtt_connect_client_info_t ci;
+repeating_timer_t timer;
+
+// FUNÇÕES DE CONEXÃO WIFI E MQTT
+
+static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) { // Callback quando a conexão MQTT muda de estado
+    if (status == MQTT_CONNECT_ACCEPTED) {
+        printf("Conectado ao ThingsBoard!\n");
+        mqtt_connected = true;
+    } else {
+        printf("Falha na conexão MQTT: %d\n", status);
+        mqtt_connected = false;
     }
 }
+
+void send_telemetry(mqtt_client_t *client, const char *payload) { // Função para enviar dados (Telemetria)
+    if (mqtt_client_is_connected(client)) {
+        cyw43_arch_lwip_begin();
+        mqtt_publish(client, TELEMETRY_TOPIC, payload, strlen(payload), 1, 0, NULL, NULL);
+        cyw43_arch_lwip_end();
+        printf("Dados enviados: %s\n", payload);
+    }
+}
+
+static void dns_callback(const char *name, const ip_addr_t *ipaddr, void *arg) { // Função responsável por resolver o IP do ThingsBoard CLoud
+    if (ipaddr) {
+        printf("DNS resolvido!\n");
+
+        cyw43_arch_lwip_begin();
+        mqtt_client_connect(static_client, ipaddr, 1883, mqtt_connection_cb, NULL, &ci);
+        cyw43_arch_lwip_end();
+
+    } else {
+        printf("Falha no DNS\n");
+    }
+}
+
+void setup_wifi(){ // Função responsável por configurar a conexão wifi
+    // Inicializa a arquitetura do chip Wi-Fi CYW43
+    if (cyw43_arch_init()) {
+        printf("Falha ao inicializar Wi-Fi\n");
+        return;
+    }
+
+    // Ativa o modo Estação (STA) para se conectar a um roteador
+    cyw43_arch_enable_sta_mode();
+
+    printf("Conectando ao Wi-Fi %s...\n", WIFI_SSID);
+
+    // Tenta conectar com um timeout de 30 segundos
+    // Passamos os valores diretamente, sem setas
+    int resultado = cyw43_arch_wifi_connect_timeout_ms(
+        WIFI_SSID, 
+        WIFI_PASSWORD, 
+        CYW43_AUTH_WPA2_AES_PSK, 
+        30000
+    );
+
+    if (resultado != 0) {
+        printf("Erro ao conectar: %d\n", resultado);
+    } else {
+        printf("Conectado com sucesso!\n");
+    }
+
+}
+
+void send_sale_mqtt(mqtt_client_t *client){ // Prepara os dados de vendas e envia uma string para a função send_telemetry() para em seguida enviar ao servidor via mqtt
+    char payload[512];
+    char items[300] = "";
+    bool first_item = true;
+
+    strcat(items, "{");
+
+    for (int i = 0; i < current_count; i++) {
+
+        if (inventory[i].quantity > 0) {
+            
+            if (!first_item){
+                strcat(items, ",");
+            }
+            first_item = false;
+
+            char item[64];
+            snprintf(item, sizeof(item),
+                "\"%s\": %d",
+                inventory[i].name,
+                inventory[i].quantity,
+                inventory[i].price
+            );
+            strcat(items, item);
+        }
+    }
+
+    strcat(items, "}");
+
+    snprintf(payload, sizeof(payload),
+        "{\"total\": %.2f, %s}",
+        total_bill,
+        items
+    );
+
+    send_telemetry(client, payload);
+
+}
+
+// FUNÇÕES DE GERAÇÃO DE BR CODE
 
 uint16_t crc16_ccitt_calculation(char* data) { // Função para calcular o CRC16 [Importante para gera uma string BR code (Polinômio 0x1021)] 
     uint16_t crc = 0xFFFF;
@@ -110,6 +224,16 @@ void generate_pix_string(char* buffer, char* key, float value) { // Gera uma str
     // Calcula CRC e anexa ao final
     uint16_t crc = crc16_ccitt_calculation(payload);
     sprintf(buffer, "%s%04X", payload, crc);
+}
+
+// FUNÇÕES DE DISPLAY
+
+int get_total_menu_rows(){ // Retorna quantos itens deverá haver no menu principal.
+    if (total_bill>0){
+        return current_count + 1; // Calcula o índice que será usado para escrever os itens e o selecionável "Prosseguir" no display
+    } else{
+        return current_count; // Calcula o índice que mostrará apenas os itens.
+    }
 }
 
 void render_frame_zero(ssd1306_t *display){
@@ -235,6 +359,18 @@ void render_display(ssd1306_t *display){ // Renderiza os frames da aplicação n
     ssd1306_show(display);
 }
 
+void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca highlight e shift iguais a 0.
+    frame = 0;
+    highlight = 0;
+    shift = 0;
+    input_value = 0;
+    for(int i=0; i < current_count; i++){
+        inventory[i].quantity = 0;
+    }
+}
+
+// FUNÇÕES DE LEITURA DE PERIFÉRICOS
+
 void handle_input(int direction) { // A partir da direção do joystick atualiza as variáveis highlight, shift e atualizar_display_flag
     
     // Caso o usuário tenha selecionado pelo menos um produto, aparecerá o selecionável 'Prosseguir'. Caso contrário, não é desenhado.
@@ -266,26 +402,7 @@ void handle_input(int direction) { // A partir da direção do joystick atualiza
     atualizar_display_flag = true;
 }
 
-void add_item(const char* name, int qty, float price) { // Trata e adiciona os dados na struct principal(inventory)
-    if (current_count < MAX_ITEMS) {
-        strncpy(inventory[current_count].name, name, 15);
-        inventory[current_count].quantity = qty;
-        inventory[current_count].price = price;
-        current_count++;
-    }
-}
-
-void restart_menu(){ // Reinicia os atributos de quantity em inventory e coloca highlight e shift iguais a 0.
-    frame = 0;
-    highlight = 0;
-    shift = 0;
-    input_value = 0;
-    for(int i=0; i < current_count; i++){
-        inventory[i].quantity = 0;
-    }
-}
-
-char read_keyboard(){
+char read_keyboard(){ // Função responsável por ler os caracteres do teclado matricial
     for (int i = 0; i < ROWS; i++){
         gpio_put(row_pins[i], 1);
         sleep_ms(10); // Delay para estabilização elétrica
@@ -305,6 +422,44 @@ char read_keyboard(){
         gpio_put(row_pins[i], 0); // Desativa
     }
     return '\0'; // Nenhuma tecla pressionada
+}
+
+// FUNÇÕES DE INTERRUPÇÕES
+
+bool connection_timer_callback(repeating_timer_t *rt) { // Repeating timer para que periodicamente verifique a conexão wifi e mqtt
+    // WIFI CHECK
+    int wifi_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+
+    // Verifica conexão do wifi e caso precise, reconecta
+    if (wifi_status != CYW43_LINK_UP) {
+        printf("[TIMER] Wi-Fi caiu! Reconectando...\n");
+
+        cyw43_arch_wifi_connect_async(
+            WIFI_SSID,
+            WIFI_PASSWORD,
+            CYW43_AUTH_WPA2_AES_PSK
+        );
+
+        mqtt_connected = false;
+        return true; // continua repetindo
+    }
+
+    // MQTT CHECK
+    if (!mqtt_connected) {
+        printf("[TIMER] Tentando reconectar MQTT...\n");
+
+        ip_addr_t mqtt_server_addr;
+
+        err_t err = dns_gethostbyname(MQTT_SERVER, &mqtt_server_addr, dns_callback, NULL);
+
+        if (err == ERR_OK) {
+            cyw43_arch_lwip_begin();
+            mqtt_client_connect(static_client, &mqtt_server_addr, 1883, mqtt_connection_cb, NULL, &ci);
+            cyw43_arch_lwip_end();
+        }
+    }
+
+    return true; // mantém o timer ativo
 }
 
 int64_t debounce_alarm_timer_callback(alarm_id_t id, void *user_data){ // Função callback para o debounce de alarme de reativação das interrupções dos botôes A e B
@@ -356,9 +511,11 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
             // ADICIONAR VALIDAÇÃO COM BUZZER PARA QUANDO CHANGE_VALUE FOR >= 0 E PARA QUANDO NÃO ATENDER A CONDIÇÃO
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
             if (change_value>=0 && frame==2){
-                restart_menu(); 
+                send_sale_flag = true;
+                // restart_menu(); 
             }else if (frame==3){
-                restart_menu();
+                send_sale_flag = true;
+                // restart_menu();
             }
         }
     }
@@ -367,6 +524,18 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
     atualizar_display_flag = true;
     add_alarm_in_ms(150, debounce_alarm_timer_callback, (void *)(intptr_t)gpio, false);     
 }
+
+// FUNÇÃO DE ADICIONAR ITENS
+void add_item(const char* name, int qty, float price) { // Trata e adiciona os dados na struct principal(inventory)
+    if (current_count < MAX_ITEMS) {
+        strncpy(inventory[current_count].name, name, 15);
+        inventory[current_count].quantity = qty;
+        inventory[current_count].price = price;
+        current_count++;
+    }
+}
+
+// FUNÇÕES DE SETUP DE PERIFÉRIOCS
 
 void setup_btn_gpios(){ // Inicializa e configura os pinos dos botões A e B
     gpio_init(BTN_A); gpio_set_dir(BTN_A,GPIO_IN); gpio_pull_up(BTN_A);
@@ -425,18 +594,52 @@ int main()
 
     // Configura teclado matricial
     setup_matrix_keyboard_gpios();
+    
+    // Configura wifi
+    setup_wifi();
 
+    // Configuração do Cliente MQTT
+    static_client = mqtt_client_new();
+    memset(&ci, 0, sizeof(ci));
+    ci.client_id = "PicoW_Device";
+    ci.client_user = THINGSBOARD_TOKEN; // O Token vai aqui!
+    ci.client_pass = NULL;              // Senha vazia
+    ci.keep_alive = 60;
+
+    ip_addr_t mqtt_server_addr;
+    // Em um cenário real, use DNS para resolver o IP do ThingsBoard
+    err_t err = dns_gethostbyname(MQTT_SERVER, &mqtt_server_addr, dns_callback, NULL);
+
+    if (err == ERR_OK) {
+        printf("DNS resolvido imediatamente\n");
+
+        cyw43_arch_lwip_begin();
+        mqtt_client_connect(static_client, &mqtt_server_addr, 1883, mqtt_connection_cb, NULL, &ci);
+        cyw43_arch_lwip_end();
+    }
+    else if (err == ERR_INPROGRESS) {
+        printf("Aguardando DNS...\n");
+    }
+    else {
+        printf("Erro DNS: %d\n", err);
+    }
+    
     // Adiciona itens
     add_item("Cafe", 0, 5.50);
     add_item("Acucar", 0, 3.20);
     add_item("Leite", 0, 4.80);
     add_item("Pao", 0, 0.50);
     add_item("Manteiga", 0, 9.90);
+    add_item("Bolo", 0, 5.00);
+    add_item("Refrigerante", 0, 3.50);
 
     // Funções de interrupção
     gpio_set_irq_enabled_with_callback(BTN_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler_callback);
     gpio_set_irq_enabled_with_callback(BTN_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler_callback);
-    
+
+    // Inicia timer periódico de 5 segundos que verifica a conexão wifi e mqtt
+    add_repeating_timer_ms(5000, connection_timer_callback, NULL, &timer); 
+
     while (true) {
         // Condicional adiciona para evitar leituras analógicas sem necessidade
         if (frame==0){
@@ -482,6 +685,13 @@ int main()
             // Desativa flag para que não ocorra atualizações de display desnecessária
             atualizar_display_flag = false;
             render_display(&display);
+        }
+
+        if (send_sale_flag && mqtt_connected){
+            send_sale_flag=false;
+            send_sale_mqtt(static_client);
+            restart_menu();
+            atualizar_display_flag = true;
         }
 
         sleep_ms(200);

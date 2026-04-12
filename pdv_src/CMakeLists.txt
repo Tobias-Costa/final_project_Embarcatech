@@ -66,7 +66,10 @@ target_link_libraries(pdv_src
         pico-ssd1306
         hardware_adc
         hardware_timer
-        qrcode-master)
+        qrcode-master
+        pico_cyw43_arch_lwip_threadsafe_background  # Driver Wi-Fi + Stack de Rede
+        pico_lwip_mqtt # A biblioteca MQTT do lwIP
+)
 
 # Add the standard include files to the build
 target_include_directories(pdv_src PRIVATE
