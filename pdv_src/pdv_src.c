@@ -58,7 +58,7 @@ char keymap[ROWS][COLUMNS] = {
 #define WIFI_SSID "NOME-DA-REDE"
 #define WIFI_PASSWORD "SENHA-DA-REDE"
 #define MQTT_SERVER "mqtt.thingsboard.cloud"
-#define THINGSBOARD_TOKEN "TOKEN-DO-DEVICE"
+#define THINGSBOARD_TOKEN "NU4Cni5e8sxOb4dYSszL"
 #define TELEMETRY_TOPIC "v1/devices/me/telemetry"
 
 // ESTRUTURA DE DADOS
