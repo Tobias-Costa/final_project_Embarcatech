@@ -48,9 +48,9 @@ char keymap[ROWS][COLUMNS] = {
 
 // CONSTANTES DE CONEXÃO
 #define WIFI_SSID "NOME-DA-REDE"
-#define WIFI_PASSWORD "SENHA-DO-WIFI"
+#define WIFI_PASSWORD "SENHA-DA-REDE"
 #define MQTT_SERVER "mqtt.thingsboard.cloud"
-#define THINGSBOARD_TOKEN "THINGSBOARD-TOKEN"
+#define THINGSBOARD_TOKEN "TOKEN-DO-DEVICE"
 #define TELEMETRY_TOPIC "v1/devices/me/telemetry"
 
 // ESTRUTURA DE DADOS
@@ -127,7 +127,6 @@ void setup_wifi(){ // Função responsável por configurar a conexão wifi
     printf("Conectando ao Wi-Fi %s...\n", WIFI_SSID);
 
     // Tenta conectar com um timeout de 30 segundos
-    // Passamos os valores diretamente, sem setas
     int resultado = cyw43_arch_wifi_connect_timeout_ms(
         WIFI_SSID, 
         WIFI_PASSWORD, 
@@ -148,11 +147,7 @@ void send_sale_mqtt(mqtt_client_t *client){ // Prepara os dados de vendas e envi
     char items[300] = "";
     bool first_item = true;
 
-    strcat(items, "{");
-
     for (int i = 0; i < current_count; i++) {
-
-        if (inventory[i].quantity > 0) {
             
             if (!first_item){
                 strcat(items, ",");
@@ -167,10 +162,8 @@ void send_sale_mqtt(mqtt_client_t *client){ // Prepara os dados de vendas e envi
                 inventory[i].price
             );
             strcat(items, item);
-        }
+    
     }
-
-    strcat(items, "}");
 
     snprintf(payload, sizeof(payload),
         "{\"total\": %.2f, %s}",
@@ -426,42 +419,6 @@ char read_keyboard(){ // Função responsável por ler os caracteres do teclado 
 
 // FUNÇÕES DE INTERRUPÇÕES
 
-bool connection_timer_callback(repeating_timer_t *rt) { // Repeating timer para que periodicamente verifique a conexão wifi e mqtt
-    // WIFI CHECK
-    int wifi_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
-
-    // Verifica conexão do wifi e caso precise, reconecta
-    if (wifi_status != CYW43_LINK_UP) {
-        printf("[TIMER] Wi-Fi caiu! Reconectando...\n");
-
-        cyw43_arch_wifi_connect_async(
-            WIFI_SSID,
-            WIFI_PASSWORD,
-            CYW43_AUTH_WPA2_AES_PSK
-        );
-
-        mqtt_connected = false;
-        return true; // continua repetindo
-    }
-
-    // MQTT CHECK
-    if (!mqtt_connected) {
-        printf("[TIMER] Tentando reconectar MQTT...\n");
-
-        ip_addr_t mqtt_server_addr;
-
-        err_t err = dns_gethostbyname(MQTT_SERVER, &mqtt_server_addr, dns_callback, NULL);
-
-        if (err == ERR_OK) {
-            cyw43_arch_lwip_begin();
-            mqtt_client_connect(static_client, &mqtt_server_addr, 1883, mqtt_connection_cb, NULL, &ci);
-            cyw43_arch_lwip_end();
-        }
-    }
-
-    return true; // mantém o timer ativo
-}
-
 int64_t debounce_alarm_timer_callback(alarm_id_t id, void *user_data){ // Função callback para o debounce de alarme de reativação das interrupções dos botôes A e B
     int gpio = (int)(intptr_t)user_data;
     gpio_set_irq_enabled(gpio, GPIO_IRQ_EDGE_FALL, true);
@@ -512,10 +469,8 @@ void gpio_irq_handler_callback(uint gpio, uint32_t events){ // Callback que trat
             gpio_set_irq_enabled(BTN_B, GPIO_IRQ_EDGE_FALL, false);
             if (change_value>=0 && frame==2){
                 send_sale_flag = true;
-                // restart_menu(); 
             }else if (frame==3){
                 send_sale_flag = true;
-                // restart_menu();
             }
         }
     }
@@ -602,14 +557,15 @@ int main()
     static_client = mqtt_client_new();
     memset(&ci, 0, sizeof(ci));
     ci.client_id = "PicoW_Device";
-    ci.client_user = THINGSBOARD_TOKEN; // O Token vai aqui!
+    ci.client_user = THINGSBOARD_TOKEN; //TOKEN do Device no Thingsboard
     ci.client_pass = NULL;              // Senha vazia
     ci.keep_alive = 60;
 
+    // Uso de DNS para buscar IP do Broker mqtt
     ip_addr_t mqtt_server_addr;
-    // Em um cenário real, use DNS para resolver o IP do ThingsBoard
     err_t err = dns_gethostbyname(MQTT_SERVER, &mqtt_server_addr, dns_callback, NULL);
 
+    // Valida mensagem retornada pelo dns
     if (err == ERR_OK) {
         printf("DNS resolvido imediatamente\n");
 
@@ -624,7 +580,7 @@ int main()
         printf("Erro DNS: %d\n", err);
     }
     
-    // Adiciona itens
+    // Adiciona itens, quantidades iniciais(0) e preço unitário
     add_item("Cafe", 0, 5.50);
     add_item("Acucar", 0, 3.20);
     add_item("Leite", 0, 4.80);
@@ -636,9 +592,6 @@ int main()
     // Funções de interrupção
     gpio_set_irq_enabled_with_callback(BTN_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler_callback);
     gpio_set_irq_enabled_with_callback(BTN_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler_callback);
-
-    // Inicia timer periódico de 5 segundos que verifica a conexão wifi e mqtt
-    add_repeating_timer_ms(5000, connection_timer_callback, NULL, &timer); 
 
     while (true) {
         // Condicional adiciona para evitar leituras analógicas sem necessidade
